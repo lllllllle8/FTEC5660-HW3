@@ -170,14 +170,73 @@ for each public company. Grading uses a private set of about 20 unseen
 companies with the same tools and the same answer key rules, but different
 names and wording, and scores your 3 points only.
 
-## Homework 3 solution:
-> to students: this is your report, see the homework description.
+## Homework 3 solution
 
 ### My 3 points and rules
-> for each point: why you chose it, your PASS rule in one or two sentences, and the evidence it uses. Quote Fisher where it helps.
+
+I selected points 4, 5 and 6 to combine customer evidence with reproducible financial calculations.
+
+| Point | Why selected | PASS rule | Evidence |
+|---|---|---|---|
+| 4: Above-average sales organization | A customer can describe whether sales staff add value beyond quoting prices; this uses Fisher's scuttlebutt approach. | PASS when the customer's sales-team interview describes knowledgeable, consultative, helpful selling or effective problem solving. FAIL when the interview describes poor knowledge, unhelpful transactional selling, or customers seeking advice from competitors. | One `interview(role="customer", topic="sales_team")` call, interpreted by the required DeepSeek model. |
+| 5: Worthwhile profit margin | Industry comparison provides a relevant benchmark for profitability. | PASS if FY2025 operating margin is at least the operating-margin median for the company's own industry. | Aggregated revenue from `orders`, operating costs from `monthly_costs`, and the `company` / `industry_medians` industry join, all accessed through `sql_query`. |
+| 6: Maintaining or improving margins | A year-to-year comparison evaluates whether profitability is being maintained or improved. | PASS if FY2025 operating margin is at least FY2024 operating margin. The comparison uses two complete calendar years. | FY2024 and FY2025 totals from `orders` and `monthly_costs`, accessed through `sql_query`. |
+
+For each period, operating margin (%) = 100 × (revenue − cost of sales − selling/admin − R&D) / revenue.
+SQL computes aggregate totals and Python computes ratios and comparisons. Rounded percentages are used only for display.
+An epsilon of 1e-9 percentage points handles floating-point representation; it is not an economic decline allowance.
+
+During public-data rule validation, an additional requirement that H1-2026 margin must not fall below H1-2025
+incorrectly rejected eight companies whose point 6 answer was PASS. I therefore use the complete-year
+comparison above. The final two financial rules each matched all 20 public companies in that numerical check;
+the full three-point API run is reported separately below.
 
 ### Design
-> a visualization of your agent design and one paragraph describing it.
+
+```mermaid
+flowchart TD
+    C["Company tools"] --> Q["sql_query: annual totals and industry median"]
+    C --> I["interview: customer / sales_team"]
+    Q --> P["Python: compute margins"]
+    P --> F["Points 5 and 6: fixed comparisons"]
+    I --> L["DeepSeek through LangChain: point 4 and reason"]
+    F --> S["Python: combine verdicts and evidence summary"]
+    L --> S
+    S --> R["Provided runner: results.csv"]
+```
+
+This is a controlled tool-based workflow. `build_agent()` creates one LangChain `ChatDeepSeek` client using
+`deepseek-v4-flash`; `analyze_companies()` routes financial questions to SQL and the sales question to one
+informed customer interview. The model returns a JSON verdict and a short English explanation for point 4.
+Python generates the financial explanation from measured values and assembles the final summary, so the
+model does not perform arithmetic or revise numerical verdicts. Five companies can run concurrently.
+The normal path uses three SQL calls, one interview and one model invocation per company. A malformed
+model response receives one correction attempt; transport retries and request timeouts are bounded.
+Failures are isolated by company and point, visibly logged, and marked as provisional FAIL in the summary
+instead of being presented as evidence of business weakness. The Colab workflow flags such runs before
+report generation. Company evidence is accessed only through the supplied tools. The agent does not
+read public answers, hard-code company identities, or modify the provided tools, runner or scorer.
 
 ### Results
-> your point score on `public_test`, the companies where your verdicts disagree with the public answers, and why.
+
+Full public-test command: `python3 hw3.py --data-folder public_test`.
+
+This run evaluated **20 companies** and **60 point verdicts**.
+
+- **Balanced point score: 100.0%**.
+- Plain correct verdicts: **60/60**.
+- Observed run time in this Colab session: **9.5 seconds**.
+
+The balanced score is the average of recall on true PASS cases and recall on true FAIL cases.
+
+| Point | Correct verdicts | Balanced score |
+|---|---|---|
+| 4 | 20/20 | 100.0% |
+| 5 | 20/20 | 100.0% |
+| 6 | 20/20 | 100.0% |
+
+#### Disagreements
+
+There were no disagreements with the public answer key in this run.
+
+These are measured public-test results. The private test uses unseen companies and may differ.
